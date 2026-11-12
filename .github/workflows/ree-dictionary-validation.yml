@@ -1,0 +1,50 @@
+name: Arrow REE dictionary validation (fork only)
+on:
+  push:
+    branches:
+      - validation/ree-dictionary-55508
+permissions:
+  contents: read
+jobs:
+  cpp-ree:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Check out exact upstream PR head
+        uses: actions/checkout@v4
+        with:
+          ref: fe00ac9079128990c0affc20d698ed3399d2fbb4
+          persist-credentials: false
+      - name: Verify source and tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "fe00ac9079128990c0affc20d698ed3399d2fbb4"
+          cmake --version
+          ninja --version
+          c++ --version
+      - name: Configure minimal C++ compute tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S cpp -B cpp.build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DARROW_COMPUTE=ON \
+            -DARROW_BUILD_TESTS=ON \
+            -DARROW_BUILD_INTEGRATION=OFF \
+            -DARROW_BUILD_SHARED=ON \
+            -DARROW_BUILD_STATIC=OFF \
+            -DARROW_WITH_RE2=OFF \
+            -DARROW_WITH_UTF8PROC=OFF \
+            -DARROW_MIMALLOC=OFF \
+            -DARROW_JEMALLOC=OFF \
+            -DARROW_DEPENDENCY_SOURCE=BUNDLED
+      - name: Build focused vector kernel test binary
+        run: cmake --build cpp.build --target arrow-compute-vector-test --parallel 2
+      - name: Run dictionary REE regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_BINARY="$(find cpp.build -type f -name arrow-compute-vector-test -perm -111 -print -quit)"
+          test -n "$TEST_BINARY"
+          "$TEST_BINARY" --gtest_filter=TestRunEndEncodeDecodeNested.DictionaryValues
